@@ -19,6 +19,10 @@ API_KEY = os.getenv('DART_API_KEY')
 data_dir = Path('data')
 data_dir.mkdir(exist_ok=True)
 
+output_file = data_dir / 'minority_shareholders.csv'
+failed_file = data_dir / 'minority_shareholders_failed_data.csv'
+
+
 def download_corp_codes():
     """회사 고유번호 목록 다운로드 및 압축 해제"""
     corp_code_file = data_dir / 'corpCode.xml'
@@ -92,55 +96,78 @@ def get_minority_shareholders(corp_code, year, report_code='11011'):
     
     if data['status'] != '000':
         print(f"데이터 조회 실패: {data['status']} - {data['message']} - {corp_code} - {year}")
+
+        # 아래처럼 조회 실패한데이터는 보관하고 넘어가게 하는 코드 추가,  {corp_code} - {year} 를 저장
+        # 데이터 조회 실패: 013 - 조회된 데이타가 없습니다. - 00687599 - 2015
+        with open(failed_file, 'a') as f:
+            f.write(f"{corp_code},{year}\n")
+
         return None
     
     return data['list']
 
 def main():    
-    # 진행 상황을 저장할 파일
-    progress_file = data_dir / 'progress.csv'
-    output_file = data_dir / 'minority_shareholders.csv'
     processed_companies = set()
+    failed_combinations = set()  # (corp_code, year) 조합 저장
 
     if output_file.exists():
         print("이미 처리된 데이터가 존재합니다.")
-        # 파일을 읽어서 3번째 컬럼을 읽어서 처리된 회사 코드를 추출
-        processed_companies = set(row[2] for row in pd.read_csv(output_file).values.tolist())
-        # print("처리된 회사 코드:", processed_companies)
+        # corp_code는 세 번째 컬럼(인덱스 2)에 있으므로, 컬럼 이름을 지정하고 문자열로 읽기
+        df = pd.read_csv(output_file, 
+                        dtype={2: str},  # 세 번째 컬럼을 문자열로 읽기
+                        header=None)  # 헤더가 없음을 명시
+        processed_companies = set(df[2].tolist())  # 세 번째 컬럼 사용
+        # print("처리된 회사 코드:", list(processed_companies)[-10:])
         print(f"이미 처리된 회사 코드 수: {len(processed_companies)}")
+    
 
     # 회사 고유번호 목록 가져오기
     corp_code_file = download_corp_codes()
     corps = parse_corp_codes(corp_code_file)
     
-    print(f"웹에 등록된 총 {len(corps)}개 상장 회사 발견")
+    print(f"처리할 총 {len(corps)}개 상장 회사 발견")
 
     # processed_companies 와 corps 를 비교하여 처리되지 않은 회사 코드를 추출
     unprocessed_corps = [corp for corp in corps if corp['corp_code'] not in processed_companies]
-    # print(f"처리되지 않은 회사 코드: {unprocessed_corps}")
+    # print(f"처리되지 않은 회사 코드: {unprocessed_corps[-10:]}")
     print(f"처리되지 않은 회사 코드 수: {len(unprocessed_corps)}")
 
-    return
-    
+
+    # failed_data.txt 파일에서 회사 코드와 연도 둘 다 읽기
+    try:
+        with open(failed_file, 'r') as f:
+            failed_data = f.readlines()
+        for line in failed_data:
+            corp_code, year = line.strip().split(',')
+            failed_combinations.add((corp_code, year))
+        print(f"실패한 조회 건수: {len(failed_combinations)}")
+    except FileNotFoundError:
+        print("failed_data.txt 파일이 없습니다. 새로 생성됩니다.")
+        with open(failed_file, 'w') as f:
+            pass
+
     # 결과 저장할 리스트
     all_data = []
-    progress_data = []
         
     # 회사별로 소액주주 현황 데이터 수집
     for i, corp in enumerate(corps):
+
         # corp_code가 processed_companies에 있는지 확인
-        if resume_scan and corp['corp_code'] in processed_companies:
+        if unprocessed_corps and corp['corp_code'] in processed_companies:
             print(f"[{i+1}/{len(corps)}] {corp['corp_name']} 건너뛰기 (이미 처리됨)")
             continue
-            
+
         print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} 데이터 수집 중...")
         
-        has_data = False
-        for year in range(2015, datetime.datetime.now().year + 1):
+        for year in range(2015, datetime.datetime.now().year):
+            # 실패 이력이 있는 회사-연도 조합 건너뛰기
+            if (corp['corp_code'], str(year)) in failed_combinations:
+                print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} {year}년 건너뛰기 (이미 실패 이력 있음)")
+                continue
+
             data = get_minority_shareholders(corp['corp_code'], year)
 
             if data:
-                has_data = True
                 for item in data:
                     item['stock_code'] = corp['stock_code']
                     all_data.append(item)
@@ -148,15 +175,6 @@ def main():
 
             # API 호출 후 즉시 지연 추가
             time.sleep(0.1)  # 분당 1000회 미만을 위해 100ms 지연
-
-        # 진행 상황 저장
-        progress_data.append({
-            'corp_code': corp['corp_code'],
-            'corp_name': corp['corp_name'],
-            'processed_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        pd.DataFrame(progress_data).to_csv(progress_file, index=False, encoding='utf-8-sig', mode='a', header=False)
-
         
         print(f"조회된 자료의 수: {len(all_data)}")
 
