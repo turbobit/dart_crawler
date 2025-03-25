@@ -1,4 +1,4 @@
-## 소액주주 현황 수집
+## 소액주주 현황 수집 : https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS002&apiId=2019009
 ## api 제약 하루 2만건 미만, 분당 1000회 미만
 
 import datetime
@@ -96,35 +96,31 @@ def get_minority_shareholders(corp_code, year, report_code='11011'):
     
     return data['list']
 
-def main():
-    # .env에서 resume_scan 값 가져오기
-    resume_scan = os.getenv('RESUME_SCAN') == '1'
-    
+def main():    
     # 진행 상황을 저장할 파일
     progress_file = data_dir / 'progress.csv'
     output_file = data_dir / 'minority_shareholders.csv'
     processed_companies = set()
 
-    if not resume_scan:
-        # 기존에 저장된 파일 이름을 변경(지금타임스탬프를 추가)
-        if progress_file.exists():
-            progress_file.rename(data_dir / f'progress_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}.csv')
-        if output_file.exists():
-            output_file.rename(data_dir / f'minority_shareholders_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}.csv')
-
-    # 이어서 처리하는 경우 진행 상황 파일 로드
-    if resume_scan and progress_file.exists():
-        progress_df = pd.read_csv(progress_file)
-        # corp_code를 문자열로 변환하여 저장
-        processed_companies = set(str(code).zfill(8) for code in progress_df['corp_code'].tolist())
-        print(f"이전에 처리된 {len(processed_companies)}개 회사 건너뛰기")
-        print("처리된 회사 코드:", processed_companies)
+    if output_file.exists():
+        print("이미 처리된 데이터가 존재합니다.")
+        # 파일을 읽어서 3번째 컬럼을 읽어서 처리된 회사 코드를 추출
+        processed_companies = set(row[2] for row in pd.read_csv(output_file).values.tolist())
+        # print("처리된 회사 코드:", processed_companies)
+        print(f"이미 처리된 회사 코드 수: {len(processed_companies)}")
 
     # 회사 고유번호 목록 가져오기
     corp_code_file = download_corp_codes()
     corps = parse_corp_codes(corp_code_file)
     
-    print(f"총 {len(corps)}개 상장 회사 발견")
+    print(f"웹에 등록된 총 {len(corps)}개 상장 회사 발견")
+
+    # processed_companies 와 corps 를 비교하여 처리되지 않은 회사 코드를 추출
+    unprocessed_corps = [corp for corp in corps if corp['corp_code'] not in processed_companies]
+    # print(f"처리되지 않은 회사 코드: {unprocessed_corps}")
+    print(f"처리되지 않은 회사 코드 수: {len(unprocessed_corps)}")
+
+    return
     
     # 결과 저장할 리스트
     all_data = []
@@ -148,7 +144,7 @@ def main():
                 for item in data:
                     item['stock_code'] = corp['stock_code']
                     all_data.append(item)
-                    pd.DataFrame(item).to_csv(output_file, index=False, encoding='utf-8-sig', mode='a')
+                    pd.DataFrame([item]).to_csv(output_file, index=False, encoding='utf-8-sig', mode='a', header=False)
 
             # API 호출 후 즉시 지연 추가
             time.sleep(0.1)  # 분당 1000회 미만을 위해 100ms 지연
@@ -159,7 +155,7 @@ def main():
             'corp_name': corp['corp_name'],
             'processed_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
-        pd.DataFrame(progress_data).to_csv(progress_file, index=False, encoding='utf-8-sig', mode='a')
+        pd.DataFrame(progress_data).to_csv(progress_file, index=False, encoding='utf-8-sig', mode='a', header=False)
 
         
         print(f"조회된 자료의 수: {len(all_data)}")
