@@ -21,7 +21,8 @@ data_dir.mkdir(exist_ok=True)
 
 output_file = data_dir / 'minority_shareholders.csv'
 failed_file = data_dir / 'minority_shareholders_failed_data.csv'
-
+start_year = 2015
+end_year = 2024
 
 def download_corp_codes():
     """회사 고유번호 목록 다운로드 및 압축 해제"""
@@ -167,7 +168,7 @@ def main():
 
         print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} 데이터 수집 중...")
         
-        for year in range(2015, datetime.datetime.now().year):
+        for year in range(start_year, end_year):
             # 실패 이력이 있는 회사-연도 조합 건너뛰기
             if (corp['corp_code'], str(year)) in failed_combinations:
                 print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} {year}년 건너뛰기 (이미 실패 이력 있음)")
