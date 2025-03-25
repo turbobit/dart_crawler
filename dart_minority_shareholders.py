@@ -97,10 +97,18 @@ def get_minority_shareholders(corp_code, year, report_code='11011'):
     if data['status'] != '000':
         print(f"데이터 조회 실패: {data['status']} - {data['message']} - {corp_code} - {year}")
 
-        # 아래처럼 조회 실패한데이터는 보관하고 넘어가게 하는 코드 추가,  {corp_code} - {year} 를 저장
-        # 데이터 조회 실패: 013 - 조회된 데이타가 없습니다. - 00687599 - 2015
-        with open(failed_file, 'a') as f:
-            f.write(f"{corp_code},{year}\n")
+        if data['status'] == '020':
+            #요청 제한을 초과 완전히 프로그램 종료
+            print("요청 제한을 초과하여 프로그램을 종료합니다.(하루 2만건 제한)")
+            exit()
+
+        if data['status'] == '013':
+            #조회된 데이터가 없음
+            # 아래처럼 조회 실패한데이터는 보관하고 넘어가게 하는 코드 추가,  {corp_code},{year} 를 저장
+            with open(failed_file, 'a') as f:
+                f.write(f"{corp_code},{year}\n")
+            return None
+
 
         return None
     
