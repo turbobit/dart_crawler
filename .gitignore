@@ -1,3 +1,2 @@
 .env
-data/progress.csv
-data/minority_shareholders.csv
+data/*
