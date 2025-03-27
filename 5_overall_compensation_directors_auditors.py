@@ -1,4 +1,4 @@
-## 소액주주 현황 수집 : https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS002&apiId=2019009
+## 이사·감사 전체의 보수현황(보수지급금액 - 이사·감사 전체) 현황 수집 : https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS002&apiId=2019013
 ## api 제약 하루 2만건 미만, 분당 1000회 미만
 
 import datetime
@@ -19,8 +19,8 @@ API_KEY = os.getenv('DART_API_KEY')
 data_dir = Path('data')
 data_dir.mkdir(exist_ok=True)
 
-output_file = data_dir / 'minority_shareholders.csv'
-failed_file = data_dir / 'minority_shareholders_failed_data.csv'
+output_file = data_dir / 'overall_compensation_directors_auditors.csv'
+failed_file = data_dir / ('overall_compensation_directors_auditors' + '_failed_data.csv')
 start_year = 2015
 end_year = 2024
 
@@ -77,9 +77,9 @@ def parse_corp_codes(file_path):
     
     return corps
 
-def get_minority_shareholders(corp_code, year, report_code='11011'):
-    """소액주주 현황 데이터 가져오기"""
-    url = "https://opendart.fss.or.kr/api/mrhlSttus.json"
+def get_data(corp_code, year, report_code='11011'):
+    """직원 현황 데이터 가져오기"""
+    url = "https://opendart.fss.or.kr/api/hmvAuditAllSttus.json"
     params = {
         'crtfc_key': API_KEY,
         'corp_code': corp_code,
@@ -117,16 +117,15 @@ def get_minority_shareholders(corp_code, year, report_code='11011'):
 
 def main():    
     processed_companies = set()
-    failed_combinations = set()  # (corp_code, year) 조합 저장
+    failed_combinations = set()
+    first_write = not output_file.exists()  # 파일이 존재하지 않으면 True
 
     if output_file.exists():
         print("이미 처리된 데이터가 존재합니다.")
-        # corp_code는 세 번째 컬럼(인덱스 2)에 있으므로, 컬럼 이름을 지정하고 문자열로 읽기
         df = pd.read_csv(output_file, 
-                        dtype={2: str},  # 세 번째 컬럼을 문자열로 읽기
-                        header=None)  # 헤더가 없음을 명시
-        processed_companies = set(df[2].tolist())  # 세 번째 컬럼 사용
-        # print("처리된 회사 코드:", list(processed_companies)[-10:])
+                        dtype={2: str},
+                        header=None)
+        processed_companies = set(df[2].tolist())
         print(f"이미 처리된 회사 코드 수: {len(processed_companies)}")
     
 
@@ -174,13 +173,24 @@ def main():
                 print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} {year}년 건너뛰기 (이미 실패 이력 있음)")
                 continue
 
-            data = get_minority_shareholders(corp['corp_code'], year)
+            data = get_data(corp['corp_code'], year)
 
             if data:
                 for item in data:
+                    # 모든 문자열 값에서 개행문자 제거
+                    for key, value in item.items():
+                        if isinstance(value, str):
+                            item[key] = value.replace('\n', ' ').strip()
+                    
                     item['stock_code'] = corp['stock_code']
                     all_data.append(item)
-                    pd.DataFrame([item]).to_csv(output_file, index=False, encoding='utf-8-sig', mode='a', header=False)
+                    # 첫 번째 쓰기일 때만 헤더 포함, 이후에는 헤더 제외
+                    pd.DataFrame([item]).to_csv(output_file, 
+                                              index=False, 
+                                              encoding='utf-8-sig', 
+                                              mode='a',
+                                              header=first_write)
+                    first_write = False  # 첫 번째 쓰기 후에는 False로 설정
 
             # API 호출 후 즉시 지연 추가
             time.sleep(0.1)  # 분당 1000회 미만을 위해 100ms 지연
