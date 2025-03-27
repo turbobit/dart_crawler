@@ -166,7 +166,7 @@ def main():
 
         print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} 데이터 수집 중...")
         
-        for year in range(start_year, end_year):
+        for year in range(start_year, end_year + 1):
             # 실패 이력이 있는 회사-연도 조합 건너뛰기
             if (corp['corp_code'], str(year)) in failed_combinations:
                 print(f"[{i+1}/{len(corps)}] {corp['corp_code']} - {corp['corp_name']} {year}년 건너뛰기 (이미 실패 이력 있음)")
